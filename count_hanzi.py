@@ -1,22 +1,50 @@
 import sys
 import re
 
-def count_chinese_chars(text):
+def get_char_breakdown(text):
     """
-    Counts Chinese characters (CJK Unified Ideographs) in a string.
-    Excludes punctuation, numbers, and Roman script.
+    Returns a dictionary with counts for different CJK ranges.
     """
-    # Regex pattern for the most common CJK Unified Ideographs
-    # Range: U+4E00 to U+9FFF
-    pattern = r'[\u4e00-\u9fff]'
-    matches = re.findall(pattern, text)
-    return len(matches)
+    # 1. Basic CJK Unified Ideographs (Common)
+    # Range: U+4E00 - U+9FFF
+    basic_matches = re.findall(r'[\u4e00-\u9fff]', text)
+
+    # 2. Extension A (Rare / Specialized)
+    # Range: U+3400 - U+4DBF
+    ext_a_matches = re.findall(r'[\u3400-\u4dbf]', text)
+
+    # 3. Extensions B, C, D, E, F (Historical / Classical / Huge)
+    # Ranges: Plane 2 and 3. Grouped together as they are rare in modern context.
+    # Note: \U000xxxxx format is required for chars outside the basic plane.
+    ext_historic_matches = re.findall(r'['
+        r'\U00020000-\U0002a6df' # Ext B
+        r'\U0002a700-\U0002b73f' # Ext C
+        r'\U0002b740-\U0002b81f' # Ext D
+        r'\U0002b820-\U0002ceaf' # Ext E
+        r'\U0002ceb0-\U0002ebef' # Ext F
+    r']', text)
+
+    # 4. Compatibility Ideographs (The "look-alikes")
+    # Ranges: F900-FAFF and 2F800-2FA1F
+    compat_matches = re.findall(r'[\uf900-\ufaff\U0002f800-\U0002fa1f]', text)
+
+    return {
+        "Basic (Common)": len(basic_matches),
+        "Extension A (Rare)": len(ext_a_matches),
+        "Extension B-F (Historical)": len(ext_historic_matches),
+        "Compatibility (Roundtrip)": len(compat_matches)
+    }
 
 def main():
-    total_count = 0
+    totals = {
+        "Basic (Common)": 0,
+        "Extension A (Rare)": 0,
+        "Extension B-F (Historical)": 0,
+        "Compatibility (Roundtrip)": 0
+    }
+    
     input_source = None
 
-    # check if a file argument is provided
     if len(sys.argv) > 1:
         try:
             input_source = open(sys.argv[1], 'r', encoding='utf-8')
@@ -27,20 +55,31 @@ def main():
             print(f"Error reading file: {e}", file=sys.stderr)
             sys.exit(1)
     else:
-        # Default to standard input (stdin)
         input_source = sys.stdin
 
     try:
-        # Process line by line to handle large files efficiently
         for line in input_source:
-            total_count += count_chinese_chars(line)
+            line_stats = get_char_breakdown(line)
+            for k, v in line_stats.items():
+                totals[k] += v
     except UnicodeDecodeError:
         print("Error: Input must be UTF-8 encoded.", file=sys.stderr)
     finally:
         if input_source is not sys.stdin:
             input_source.close()
 
-    print(total_count)
+    # Calculate Grand Total
+    grand_total = sum(totals.values())
+
+    # Print Report
+    print(f"{'CATEGORY':<30} | {'COUNT':>8}")
+    print("-" * 41)
+    for category, count in totals.items():
+        if count > 0: # Only show categories that actually had hits? Or all? 
+                      # Let's show all to be explicit.
+            print(f"{category:<30} | {count:>8}")
+    print("-" * 41)
+    print(f"{'TOTAL HANZI (字)':<30} | {grand_total:>8}")
 
 if __name__ == "__main__":
     main()
