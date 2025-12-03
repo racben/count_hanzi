@@ -1,85 +1,103 @@
 import sys
 import re
 
-def get_char_breakdown(text):
+def count_hanzi(text):
     """
-    Returns a dictionary with counts for different CJK ranges.
+    Counts Chinese characters using the comprehensive regex ranges.
     """
-    # 1. Basic CJK Unified Ideographs (Common)
-    # Range: U+4E00 - U+9FFF
-    basic_matches = re.findall(r'[\u4e00-\u9fff]', text)
+    if not text:
+        return 0
+        
+    hanzi_pattern = re.compile(r'['
+        r'\u4e00-\u9fff'          # Basic
+        r'\u3400-\u4dbf'          # Ext A
+        r'\U00020000-\U0002a6df'  # Ext B
+        r'\U0002a700-\U0002b73f'  # Ext C
+        r'\U0002b740-\U0002b81f'  # Ext D
+        r'\U0002b820-\U0002ceaf'  # Ext E
+        r'\uf900-\ufaff'          # Compatibility
+        r'\U0002f800-\U0002fa1f'  # Compat Supplement
+    r']')
+    return len(hanzi_pattern.findall(text))
 
-    # 2. Extension A (Rare / Specialized)
-    # Range: U+3400 - U+4DBF
-    ext_a_matches = re.findall(r'[\u3400-\u4dbf]', text)
+def clean_html_tags(text):
+    """Removes <p>, <br>, etc. from a string."""
+    return re.sub(r'<[^>]+>', '', text)
 
-    # 3. Extensions B, C, D, E, F (Historical / Classical / Huge)
-    # Ranges: Plane 2 and 3. Grouped together as they are rare in modern context.
-    # Note: \U000xxxxx format is required for chars outside the basic plane.
-    ext_historic_matches = re.findall(r'['
-        r'\U00020000-\U0002a6df' # Ext B
-        r'\U0002a700-\U0002b73f' # Ext C
-        r'\U0002b740-\U0002b81f' # Ext D
-        r'\U0002b820-\U0002ceaf' # Ext E
-        r'\U0002ceb0-\U0002ebef' # Ext F
-    r']', text)
+def process_file(content):
+    dialogue_count = 0
+    narration_count = 0
+    
+    # --- PHASE 1: Extract Dialogue (The "td-text" cells) ---
+    # We use Regex with DOTALL so it captures newlines inside the HTML tags.
+    # This specifically targets the speech text column, ignoring the speaker name column.
+    dialogue_pattern = re.compile(r'<td class="td-text"[^>]*>(.*?)</td>', re.DOTALL)
+    
+    dialogue_matches = dialogue_matches = dialogue_pattern.findall(content)
+    for match in dialogue_matches:
+        clean_text = clean_html_tags(match)
+        dialogue_count += count_hanzi(clean_text)
 
-    # 4. Compatibility Ideographs (The "look-alikes")
-    # Ranges: F900-FAFF and 2F800-2FA1F
-    compat_matches = re.findall(r'[\uf900-\ufaff\U0002f800-\U0002fa1f]', text)
+    # --- PHASE 2: Remove Tables to isolate Narration ---
+    # Now that we've counted dialogue, we strip the ENTIRE HTML table out.
+    # This ensures we don't double count, and we automatically kill Speaker Names (td-name).
+    content_without_tables = re.sub(r'<table.*?</table>', '', content, flags=re.DOTALL)
 
-    return {
-        "Basic (Common)": len(basic_matches),
-        "Extension A (Rare)": len(ext_a_matches),
-        "Extension B-F (Historical)": len(ext_historic_matches),
-        "Compatibility (Roundtrip)": len(compat_matches)
-    }
+    # --- PHASE 3: Process Narration (What's left) ---
+    lines = content_without_tables.splitlines()
+    for line in lines:
+        s = line.strip()
+        
+        # SKIP: Empty lines
+        if not s: continue
+        
+        # SKIP: YAML Frontmatter (--- title: ...)
+        if s.startswith('---') or s.startswith('title:') or s.startswith('author:') or s.startswith('lang:'):
+            continue
+
+        # SKIP: Markdown Headers (Generalized Chapter detection)
+        # Ignores "# 11-1", "## H9-4", "### 12-3", etc.
+        if s.startswith('#'):
+            continue
+            
+        # SKIP: Images (![](...))
+        if s.startswith('!['):
+            continue
+            
+        # SKIP: System/Asset Codes & Metadata
+        # Detects lines like "27_g11_lentinobleroom", "avg_npc_408", "main_11", "[]{#p1...}"
+        if re.match(r'^[a-zA-Z0-9_#\$\{\}\[\]\.]+$', s):
+            continue
+        
+        # SKIP: Specific Game Data headers
+        if s.startswith('Script Version') or s.startswith('Game data'):
+            continue
+            
+        # SKIP: Game Logic (Options/Medal descriptions)
+        if s.startswith(':::') or s.startswith('medal_'):
+            continue
+
+        # Whatever is left is likely Narration (Story text not in a dialogue box)
+        narration_count += count_hanzi(s)
+
+    return dialogue_count, narration_count
 
 def main():
-    totals = {
-        "Basic (Common)": 0,
-        "Extension A (Rare)": 0,
-        "Extension B-F (Historical)": 0,
-        "Compatibility (Roundtrip)": 0
-    }
-    
-    input_source = None
-
-    if len(sys.argv) > 1:
+    if len(sys.argv) < 2:
+        # Defaults to stdin if no file passed
+        content = sys.stdin.read()
+    else:
         try:
-            input_source = open(sys.argv[1], 'r', encoding='utf-8')
-        except FileNotFoundError:
-            print(f"Error: File '{sys.argv[1]}' not found.", file=sys.stderr)
-            sys.exit(1)
+            with open(sys.argv[1], 'r', encoding='utf-8') as f:
+                content = f.read()
         except Exception as e:
             print(f"Error reading file: {e}", file=sys.stderr)
             sys.exit(1)
-    else:
-        input_source = sys.stdin
 
-    try:
-        for line in input_source:
-            line_stats = get_char_breakdown(line)
-            for k, v in line_stats.items():
-                totals[k] += v
-    except UnicodeDecodeError:
-        print("Error: Input must be UTF-8 encoded.", file=sys.stderr)
-    finally:
-        if input_source is not sys.stdin:
-            input_source.close()
-
-    # Calculate Grand Total
-    grand_total = sum(totals.values())
-
-    # Print Report
-    print(f"{'CATEGORY':<30} | {'COUNT':>8}")
-    print("-" * 41)
-    for category, count in totals.items():
-        if count > 0: # Only show categories that actually had hits? Or all? 
-                      # Let's show all to be explicit.
-            print(f"{category:<30} | {count:>8}")
-    print("-" * 41)
-    print(f"{'TOTAL HANZI (字)':<30} | {grand_total:>8}")
-
-if __name__ == "__main__":
-    main()
+    d_count, n_count = process_file(content)
+    
+    print("-" * 30)
+    print(f"Dialogue (Talk):   {d_count:>6}")
+    print(f"Narration (Prose): {n_count:>6}")
+    print("-" * 30)
+    print(f"TOTAL STORY HANZI: {d_count + n
