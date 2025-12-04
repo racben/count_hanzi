@@ -35,7 +35,31 @@ def get_char_breakdown(text):
         "Compatibility (Roundtrip)": len(compat_matches)
     }
 
+def print_help():
+    print("Generic Hanzi Counter (Detailed)")
+    print("================================")
+    print("Usage: python count_hanzi.py [filename]")
+    print("")
+    print("Description:")
+    print("  Counts Chinese characters (Hanzi/Kanji) in a text file or stdin.")
+    print("  Includes standard CJK, Extensions A-F, and Compatibility characters.")
+    print("  Excludes punctuation, alphabets, and numbers.")
+    print("")
+    print("Options:")
+    print("  -h, --help    Show this help message and exit")
+    print("")
+    print("NOTE ON ARKNIGHTS DATA:")
+    print("  This script is for general purpose text.")
+    print("  If you are processing Arknights story files (Markdown with HTML tables),")
+    print("  please use the specialized 'count_arknights.py' script")
+    print("  (often found in the 'arknights' branch).")
+
 def main():
+    # Check for help arguments
+    if len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help']:
+        print_help()
+        sys.exit(0)
+
     totals = {
         "Basic (Common)": 0,
         "Extension A (Rare)": 0,
