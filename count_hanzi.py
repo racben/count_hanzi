@@ -100,4 +100,8 @@ def main():
     print(f"Dialogue (Talk):   {d_count:>6}")
     print(f"Narration (Prose): {n_count:>6}")
     print("-" * 30)
-    print(f"TOTAL STORY HANZI: {d_count + n
+    print(f"TOTAL STORY HANZI: {d_count + n_count:>6}")
+    print("-" * 30)
+
+if __name__ == "__main__":
+    main()
