@@ -1,3 +1,7 @@
+#!/usr/bin/env -S uv run --script
+
+# env needs the -S to use arguments
+
 import sys
 import re
 
