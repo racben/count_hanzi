@@ -134,6 +134,36 @@ def find_target_line(block: str, target: int):
     return None, cumulative, cumulative
 
 
+def count_block(block: str) -> int:
+    cumulative = 0
+    in_description_block = False
+
+    for raw_line in block.splitlines():
+        stripped = raw_line.strip()
+
+        if stripped.startswith(":::"):
+            in_description_block = not in_description_block
+            continue
+
+        cumulative += line_countable_hanzi(raw_line, in_description_block)
+
+    return cumulative
+
+
+def estimate_location(
+    *,
+    target: int,
+    total_count: int,
+    loc_start: int,
+    loc_end: int,
+) -> float:
+    if total_count <= 0:
+        raise ValueError("total_count must be greater than 0")
+
+    progress = target / total_count
+    return loc_start + progress * (loc_end - loc_start)
+
+
 def print_context(lines: list[str], center_idx: int, before: int = 4, after: int = 6) -> None:
     start = max(0, center_idx - before)
     end = min(len(lines), center_idx + after + 1)
@@ -162,8 +192,25 @@ def main() -> None:
         default=5,
         help="Number of surrounding lines to print. Default: 5.",
     )
+    parser.add_argument(
+        "--loc-start",
+        type=int,
+        help="Kindle location at the start of this chapter/stage.",
+    )
+    parser.add_argument(
+        "--loc-end",
+        type=int,
+        help="Kindle location at the end of this chapter/stage.",
+    )
 
     args = parser.parse_args()
+
+    if (args.loc_start is None) != (args.loc_end is None):
+        print(
+            "Error: --loc-start and --loc-end must be provided together.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     content = Path(args.file).read_text(encoding="utf-8")
     chapters = collect_chapters(content)
@@ -177,6 +224,7 @@ def main() -> None:
     block = chapters[args.chapter]
     lines = block.splitlines()
 
+    total_count = count_block(block)
     idx, before_count, after_count = find_target_line(block, args.target)
 
     if idx is None:
@@ -189,8 +237,22 @@ def main() -> None:
 
     print()
     print(f"{args.chapter}: target {args.target:,} 字 lands on this line:")
+    print(f"Chapter total:     {total_count:,}")
     print(f"Count before line: {before_count:,}")
     print(f"Count after line:  {after_count:,}")
+
+    if args.loc_start is not None and args.loc_end is not None:
+        loc_est = estimate_location(
+            target=args.target,
+            total_count=total_count,
+            loc_start=args.loc_start,
+            loc_end=args.loc_end,
+        )
+
+        print()
+        print(f"Estimated Kindle location: {loc_est:.1f}")
+        print(f"Rounded Kindle location:   {round(loc_est)}")
+
     print()
     print_context(lines, idx, before=args.context, after=args.context)
 
