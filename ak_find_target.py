@@ -54,6 +54,30 @@ def split_markdown_chapters(content: str) -> list[tuple[str, str]]:
     return chapters
 
 
+def collect_chapters(content: str) -> dict[str, str]:
+    """
+    Collect all Markdown sections with the same chapter ID into one block.
+
+    This matters because Arknights exports often look like:
+
+        ## 13-2 眼前的伤
+        ## 13-2 眼前的伤 行动前
+        ## 13-2 眼前的伤 行动后
+
+    A plain dict(split_markdown_chapters(...)) would silently keep only
+    the last 13-2 section.
+    """
+    chapters: dict[str, list[str]] = {}
+
+    for chapter_id, block in split_markdown_chapters(content):
+        chapters.setdefault(chapter_id, []).append(block)
+
+    return {
+        chapter_id: "\n".join(blocks)
+        for chapter_id, blocks in chapters.items()
+    }
+
+
 def line_countable_hanzi(raw_line: str, in_description_block: bool) -> int:
     line = raw_line.strip()
 
@@ -142,7 +166,7 @@ def main() -> None:
     args = parser.parse_args()
 
     content = Path(args.file).read_text(encoding="utf-8")
-    chapters = dict(split_markdown_chapters(content))
+    chapters = collect_chapters(content)
 
     if args.chapter not in chapters:
         print(f"Chapter not found: {args.chapter}", file=sys.stderr)
